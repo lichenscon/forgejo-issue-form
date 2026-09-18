@@ -1,0 +1,16 @@
+services:
+  issue-creator:
+    build: .
+    container_name: flask-forgejo-issue
+    ports:
+      - "127.0.0.1:5000:5000" # Bindet standardmäßig nur lokal; Reverse Proxy (Nginx/Traefik) übernimmt externen Zugriff
+    environment:
+      - FORGEJO_URL=https://deine-forgejo-domain.de
+      - FORGEJO_REPO=owner/repo-name
+      - FORGEJO_TOKEN=dein_forgejo_api_token
+      - SERVICE_API_KEY=ein_geheimer_api_schluessel_fuer_den_dienst
+      - WORKERS=4 # Anzahl der Gunicorn-Worker (Faustregel: 2 * CPU-Kerne + 1)
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    read_only: false # Auf true setzen, falls keine lokalen Schreibvorgänge im Container nötig sind
