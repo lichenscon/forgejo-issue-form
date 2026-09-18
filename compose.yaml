@@ -1,6 +1,6 @@
 services:
   issue-creator:
-    build: .
+    image: ghcr.io/lichenscon/forgejo-issue-form:master
     container_name: flask-forgejo-issue
     ports:
       - "127.0.0.1:5000:5000" # Bindet standardmäßig nur lokal; Reverse Proxy (Nginx/Traefik) übernimmt externen Zugriff
