@@ -5,29 +5,126 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Forgejo Issue Ersteller</title>
     <style>
-        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; max-width: 600px; margin: 40px auto; padding: 20px; background: #f4f4f9; color: #333; }
-        form { background: white; padding: 24px; border-radius: 8px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); }
-        h1 { font-size: 1.5rem; margin-bottom: 20px; }
-        label { display: block; margin-bottom: 8px; font-weight: 600; }
-        input, textarea { width: 100%; padding: 10px; margin-bottom: 16px; border: 1px solid #ccc; border-radius: 4px; box-sizing: border-box; }
-        button { background: #2563eb; color: white; padding: 10px 16px; border: none; border-radius: 4px; cursor: pointer; font-weight: 600; width: 100%; }
-        button:hover { background: #1d4ed8; }
-        .success { background: #d1fae5; color: #065f46; padding: 12px; border-radius: 4px; margin-bottom: 16px; border: 1px solid #a3e635; }
+        :root {
+            --primary: #2563eb;
+            --primary-hover: #1d4ed8;
+            --bg: #f4f4f9;
+            --card-bg: #ffffff;
+            --text: #333333;
+            --border: #d1d5db;
+        }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            max-width: 650px;
+            margin: 40px auto;
+            padding: 20px;
+            background: var(--bg);
+            color: var(--text);
+            line-height: 1.5;
+        }
+        form {
+            background: var(--card-bg);
+            padding: 30px;
+            border-radius: 10px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.05);
+        }
+        h1 {
+            font-size: 1.5rem;
+            margin-bottom: 24px;
+            color: #111827;
+            border-bottom: 2px solid #f3f4f6;
+            padding-bottom: 12px;
+        }
+        .form-group {
+            margin-bottom: 20px;
+        }
+        label {
+            display: block;
+            margin-bottom: 8px;
+            font-weight: 600;
+            font-size: 0.95rem;
+        }
+        input[type="text"], textarea, input[type="file"] {
+            width: 100%;
+            padding: 10px 12px;
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            box-sizing: border-box;
+            font-size: 1rem;
+            font-family: inherit;
+        }
+        input[type="text"]:focus, textarea:focus {
+            outline: none;
+            border-color: var(--primary);
+            box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.1);
+        }
+        input[type="file"] {
+            background: #f9fafb;
+            padding: 8px;
+            cursor: pointer;
+        }
+        textarea {
+            resize: vertical;
+        }
+        button {
+            background: var(--primary);
+            color: white;
+            padding: 12px 16px;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            font-weight: 600;
+            width: 100%;
+            font-size: 1rem;
+            transition: background 0.2s;
+        }
+        button:hover {
+            background: var(--primary-hover);
+        }
+        .success {
+            background: #ecfdf5;
+            color: #065f46;
+            padding: 14px;
+            border-radius: 6px;
+            margin-bottom: 20px;
+            border: 1px solid #a7f3d0;
+            font-weight: 500;
+        }
+        .hint {
+            font-size: 0.85rem;
+            color: #6b7280;
+            margin-top: 4px;
+        }
     </style>
 </head>
 <body>
-    <form action="/submit" method="POST">
-        <h1>Neues Forgejo Issue melden</h1>
+    <form action="/submit" method="POST" enctype="multipart/form-data">
+        <h1>Neues Issue erstellen</h1>
         
         {% if success %}
-            <div class="success"><strong>Erfolg!</strong> Das Issue wurde erfolgreich im Repository angelegt.</div>
+            <div class="success">✔ Das Issue wurde erfolgreich inklusive Anhänge im Repository angelegt!</div>
         {% endif %}
 
-        <label for="title">Titel des Issues:</label>
-        <input type="text" id="title" name="title" placeholder="Kurze Zusammenfassung..." required>
+        <div class="form-group">
+            <label for="name">Ihr Name / Organisation:</label>
+            <input type="text" id="name" name="name" placeholder="z. B. Max Mustermann" required>
+        </div>
+
+        <div class="form-group">
+            <label for="title">Titel des Issues:</label>
+            <input type="text" id="title" name="title" placeholder="Kurze Zusammenfassung des Anliegens..." required>
+        </div>
         
-        <label for="body">Beschreibung:</label>
-        <textarea id="body" name="body" rows="6" placeholder="Detaillierte Beschreibung..."></textarea>
+        <div class="form-group">
+            <label for="body">Beschreibung:</label>
+            <textarea id="body" name="body" rows="6" placeholder="Beschreiben Sie Ihr Anliegen detailliert..."></textarea>
+        </div>
+
+        <div class="form-group">
+            <label for="attachments">Anhänge (optional, Mehrfachauswahl möglich):</label>
+            <input type="file" id="attachments" name="attachments" multiple>
+            <div class="hint">Sie können Bilder, Logs oder Dokumente anhängen.</div>
+        </div>
         
         <button type="submit">Issue abschicken</button>
     </form>
