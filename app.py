@@ -42,22 +42,24 @@ def submit_issue():
     # 1. Schritt: Anhänge einzeln an den Forgejo-Asset-Endpunkt hochladen
     for file in uploaded_files:
         if file and file.filename:
-            # Korrekter Forgejo/Gitea-Endpunkt für Issue-Attachments (erfordert den Dateinamen als Query-Parameter)
-            upload_url = f"{FORGEJO_URL.rstrip('/')}/api/v1/repos/{FORGEJO_REPO}/assets?name={file.filename}"
+            upload_url = f"{FORGEJO_URL.rstrip('/')}/api/v1/repos/{FORGEJO_REPO}/assets"
             
+            # Korrekter Multipart-Payload für die requests-Bibliothek
             files_payload = {
-                'attachment': (file.filename, file.read(), file.content_type)
+                'attachment': (file.filename, file.stream, file.content_type or 'application/octet-stream')
             }
             
             try:
-                upload_res = requests.post(upload_url, files=files_payload, headers=headers, timeout=15)
+                # WICHTIG: Kein manuelles Setzen von 'Content-Type' im Header, 
+                # da requests den Multipart-Boundary-Header sonst überschreibt!
+                upload_res = requests.post(upload_url, files=files_payload, headers=headers, timeout=30)
+                
                 if upload_res.status_code == 201:
                     res_data = upload_res.json()
                     file_url = res_data.get("browser_download_url")
                     file_name = res_data.get("name", file.filename)
                     
                     if file_url:
-                        # Markdown-Link für das Issue generieren (Bilder werden direkt angezeigt, Dateien verlinkt)
                         if file.content_type and file.content_type.startswith("image/"):
                             attachment_markdowns.append(f"![{file_name}]({file_url})")
                         else:
@@ -65,7 +67,7 @@ def submit_issue():
                             
                         logger.info(f"Anhang erfolgreich hochgeladen und verlinkt: {file_name}")
                 else:
-                    logger.error(f"Fehler beim Hochladen des Anhangs {file.filename}: {upload_res.text}")
+                    logger.error(f"Fehler beim Hochladen des Anhangs {file.filename} ({upload_res.status_code}): {upload_res.text}")
             except requests.exceptions.RequestException as e:
                 logger.exception(f"Netzwerkfehler beim Hochladen des Anhangs {file.filename}")
 
