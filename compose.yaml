@@ -10,6 +10,7 @@ services:
       - FORGEJO_TOKEN=dein_forgejo_api_token
       - SERVICE_API_KEY=ein_geheimer_api_schluessel_fuer_den_dienst
       - WORKERS=4 # Anzahl der Gunicorn-Worker (Faustregel: 2 * CPU-Kerne + 1)
+      - FORGEJO_LABEL_ID=1  # Die ID des Labels in Forgejo (z. B. 1 für "Formular")
     restart: unless-stopped
     security_opt:
       - no-new-privileges:true

@@ -1,5 +1,7 @@
 import os
 import logging
+import base64
+from io import BytesIO
 from flask import Flask, render_template, request, jsonify
 import requests
 
@@ -11,6 +13,7 @@ app = Flask(__name__)
 FORGEJO_URL = os.environ.get("FORGEJO_URL", "https://forgejo.example.com")
 FORGEJO_REPO = os.environ.get("FORGEJO_REPO", "user/repo")
 FORGEJO_TOKEN = os.environ.get("FORGEJO_TOKEN", "")
+FORGEJO_LABEL_ID = os.environ.get("FORGEJO_LABEL_ID", "")
 
 @app.after_request
 def add_security_headers(response):
@@ -25,12 +28,20 @@ def index():
 
 @app.route("/submit", methods=["POST"])
 def submit_issue():
-    name = request.form.get("name", "Anonym").strip()
+    name = request.form.get("name", "").strip()
     title = request.form.get("title", "").strip()
     body_text = request.form.get("body", "").strip()
+    
+    uploaded_files = request.files.getlist("attachments")
+    screenshot_data = request.form.get("screenshot_base64", "").strip()
 
-    if not title:
-        return jsonify({"error": "Titel ist ein Pflichtfeld"}), 400
+    # Prüfen, ob mindestens ein Feld, ein Anhang oder ein Screenshot ausgefüllt wurde
+    has_files = any(f and f.filename for f in uploaded_files)
+    if not any([name, title, body_text, has_files, screenshot_data]):
+        return jsonify({"error": "Es muss mindestens ein Feld oder ein Anhang/Screenshot ausgefüllt werden."}), 400
+
+    # Platzhalter für den Titel, falls leer
+    issue_title = title if title else "[Automatisches Support-Ticket über Webformular]"
 
     headers = {
         "Authorization": f"token {FORGEJO_TOKEN}"
@@ -52,9 +63,18 @@ def submit_issue():
 
     issue_api_url = f"{FORGEJO_URL.rstrip('/')}/api/v1/repos/{FORGEJO_REPO}/issues"
     issue_payload = {
-        "title": title,
+        "title": issue_title,
         "body": formatted_body
     }
+
+    # Label-ID dynamisch hinzufügen, falls per ENV-Variable gesetzt
+    if FORGEJO_LABEL_ID:
+        try:
+            # Forgejo API erwartet Label-IDs als Integer im Array
+            issue_payload["labels"] = [int(FORGEJO_LABEL_ID)]
+        except ValueError:
+            # Falls versehentlich ein String eingetragen wurde, als String übergeben
+            issue_payload["labels"] = [FORGEJO_LABEL_ID]
 
     try:
         issue_res = requests.post(
@@ -79,42 +99,57 @@ def submit_issue():
         logger.exception("Verbindungsfehler zur Forgejo-API beim Erstellen des Issues")
         return jsonify({"error": f"Verbindungsfehler: {str(e)}"}), 500
 
-    # 2. Schritt: Anhänge an das erstellte Issue hochladen (WICHTIG: Endpunkt heißt 'assets')
-    uploaded_files = request.files.getlist("attachments")
     attachment_markdowns = []
+    upload_url = f"{FORGEJO_URL.rstrip('/')}/api/v1/repos/{FORGEJO_REPO}/issues/{issue_number}/assets"
 
+    # 2a. Schritt: Normale Dateianhänge hochladen
     for file in uploaded_files:
         if file and file.filename:
-            # Korrekter API-Pfad mit /assets und optionalem Dateinamen als Parameter
-            upload_url = f"{FORGEJO_URL.rstrip('/')}/api/v1/repos/{FORGEJO_REPO}/issues/{issue_number}/assets?name={file.filename}"
-            
             files_payload = {
                 'attachment': (file.filename, file.stream, file.content_type or 'application/octet-stream')
             }
-            
             try:
                 upload_res = requests.post(upload_url, files=files_payload, headers=headers, timeout=30)
-                
                 if upload_res.status_code == 201:
                     res_data = upload_res.json()
                     file_url = res_data.get("browser_download_url")
                     file_name = res_data.get("name", file.filename)
-                    
                     if file_url:
                         if file.content_type and file.content_type.startswith("image/"):
                             attachment_markdowns.append(f"![{file_name}]({file_url})")
                         else:
                             attachment_markdowns.append(f"[{file_name}]({file_url})")
-                            
                         logger.info(f"Anhang erfolgreich zu Issue #{issue_number} hochgeladen: {file_name}")
-                else:
-                    logger.error(f"Fehler beim Hochladen des Anhangs {file.filename} ({upload_res.status_code}): {upload_res.text}")
-            except requests.exceptions.RequestException as e:
-                logger.exception(f"Netzwerkfehler beim Hochladen des Anhangs {file.filename}")
+            except Exception:
+                logger.exception(f"Fehler beim Hochladen des Anhangs {file.filename}")
 
-    # 3. Schritt: Falls Anhänge hochgeladen wurden, das Issue mit den Markdown-Links aktualisieren
+    # 2b. Schritt: Screenshot hochladen (falls vorhanden)
+    if screenshot_data:
+        try:
+            if "," in screenshot_data:
+                screenshot_data = screenshot_data.split(",")[1]
+            
+            img_bytes = base64.b64decode(screenshot_data)
+            screenshot_file = BytesIO(img_bytes)
+            
+            screenshot_payload = {
+                'attachment': ('screenshot.png', screenshot_file, 'image/png')
+            }
+            
+            upload_res = requests.post(upload_url, files=screenshot_payload, headers=headers, timeout=30)
+            if upload_res.status_code == 201:
+                res_data = upload_res.json()
+                file_url = res_data.get("browser_download_url")
+                file_name = res_data.get("name", "screenshot.png")
+                if file_url:
+                    attachment_markdowns.append(f"![{file_name}]({file_url})")
+                    logger.info(f"Screenshot erfolgreich zu Issue #{issue_number} hochgeladen.")
+        except Exception:
+            logger.exception("Fehler beim Verarbeiten/Hochladen des Screenshots.")
+
+    # 3. Schritt: Issue-Beschreibung aktualisieren, falls Anhänge oder Screenshots hinzugekommen sind
     if attachment_markdowns:
-        attachments_section = "\n\n---\n#### Anhänge:\n" + "\n".join(attachment_markdowns)
+        attachments_section = "\n\n---\n#### Anhänge & Screenshots:\n" + "\n".join(attachment_markdowns)
         updated_body = formatted_body + attachments_section
         
         update_url = f"{FORGEJO_URL.rstrip('/')}/api/v1/repos/{FORGEJO_REPO}/issues/{issue_number}"
