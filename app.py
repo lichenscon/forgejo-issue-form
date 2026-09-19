@@ -36,15 +36,15 @@ def submit_issue():
         "Authorization": f"token {FORGEJO_TOKEN}"
     }
 
-    # 1. Schritt: Anhänge über den offiziellen Forgejo-Anhang-Endpunkt hochladen
     uploaded_files = request.files.getlist("attachments")
-    attachment_uuids = []
+    attachment_markdowns = []
 
+    # 1. Schritt: Anhänge einzeln an den Forgejo-Asset-Endpunkt hochladen
     for file in uploaded_files:
         if file and file.filename:
-            upload_url = f"{FORGEJO_URL.rstrip('/')}/api/v1/repos/{FORGEJO_REPO}/assets"
+            # Korrekter Forgejo/Gitea-Endpunkt für Issue-Attachments (erfordert den Dateinamen als Query-Parameter)
+            upload_url = f"{FORGEJO_URL.rstrip('/')}/api/v1/repos/{FORGEJO_REPO}/assets?name={file.filename}"
             
-            # Datei für den Upload vorbereiten
             files_payload = {
                 'attachment': (file.filename, file.read(), file.content_type)
             }
@@ -52,16 +52,28 @@ def submit_issue():
             try:
                 upload_res = requests.post(upload_url, files=files_payload, headers=headers, timeout=15)
                 if upload_res.status_code == 201:
-                    uuid = upload_res.json().get("uuid")
-                    if uuid:
-                        attachment_uuids.append(uuid)
-                        logger.info(f"Anhang erfolgreich zu Forgejo hochgeladen: {file.filename} (UUID: {uuid})")
+                    res_data = upload_res.json()
+                    file_url = res_data.get("browser_download_url")
+                    file_name = res_data.get("name", file.filename)
+                    
+                    if file_url:
+                        # Markdown-Link für das Issue generieren (Bilder werden direkt angezeigt, Dateien verlinkt)
+                        if file.content_type and file.content_type.startswith("image/"):
+                            attachment_markdowns.append(f"![{file_name}]({file_url})")
+                        else:
+                            attachment_markdowns.append(f"[{file_name}]({file_url})")
+                            
+                        logger.info(f"Anhang erfolgreich hochgeladen und verlinkt: {file_name}")
                 else:
                     logger.error(f"Fehler beim Hochladen des Anhangs {file.filename}: {upload_res.text}")
             except requests.exceptions.RequestException as e:
                 logger.exception(f"Netzwerkfehler beim Hochladen des Anhangs {file.filename}")
 
-    # 2. Schritt: Formatierter Beschreibungstext
+    # 2. Schritt: Formatierter Beschreibungstext inklusive der hochgeladenen Anhänge
+    attachments_section = ""
+    if attachment_markdowns:
+        attachments_section = "\n\n---\n#### Anhänge:\n" + "\n".join(attachment_markdowns)
+
     formatted_body = f"""### Neue Einreichung über das Webformular
 
 **Eingereicht von:** {name if name else "Anonym"}  
@@ -69,22 +81,18 @@ def submit_issue():
 ---
 
 #### Beschreibung:
-{body_text if body_text else "*Keine Beschreibung angegeben.*"}
+{body_text if body_text else "*Keine Beschreibung angegeben.*"}{attachments_section}
 
 ---
-*Automatisch generiert über das Kontakt- und Supportformular.*
+*Automatisch generiert über das Supportformular.*
 """
 
-    # 3. Schritt: Issue erstellen und die hochgeladenen Attachment-UUIDs mit übergeben
+    # 3. Schritt: Issue in Forgejo erstellen
     issue_api_url = f"{FORGEJO_URL.rstrip('/')}/api/v1/repos/{FORGEJO_REPO}/issues"
     issue_payload = {
         "title": title,
         "body": formatted_body
     }
-    
-    # Falls Attachments hochgeladen wurden, übergibt Forgejo diese im Feld "files" als Array von UUID-Strings
-    if attachment_uuids:
-        issue_payload["files"] = attachment_uuids
 
     try:
         response = requests.post(issue_api_url, json=issue_payload, headers={**headers, "Content-Type": "application/json"}, timeout=10)
