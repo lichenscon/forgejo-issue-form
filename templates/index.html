@@ -3,130 +3,130 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Forgejo Issue Ersteller</title>
+    <title>Support-Formular</title>
+    <!-- Optional: Ein einfaches Styling -->
     <style>
-        :root {
-            --primary: #2563eb;
-            --primary-hover: #1d4ed8;
-            --bg: #f4f4f9;
-            --card-bg: #ffffff;
-            --text: #333333;
-            --border: #d1d5db;
-        }
-        body {
-            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-            max-width: 650px;
-            margin: 40px auto;
-            padding: 20px;
-            background: var(--bg);
-            color: var(--text);
-            line-height: 1.5;
-        }
-        form {
-            background: var(--card-bg);
-            padding: 30px;
-            border-radius: 10px;
-            box-shadow: 0 4px 12px rgba(0,0,0,0.05);
-        }
-        h1 {
-            font-size: 1.5rem;
-            margin-bottom: 24px;
-            color: #111827;
-            border-bottom: 2px solid #f3f4f6;
-            padding-bottom: 12px;
-        }
-        .form-group {
-            margin-bottom: 20px;
-        }
-        label {
-            display: block;
-            margin-bottom: 8px;
-            font-weight: 600;
-            font-size: 0.95rem;
-        }
-        input[type="text"], textarea, input[type="file"] {
-            width: 100%;
-            padding: 10px 12px;
-            border: 1px solid var(--border);
-            border-radius: 6px;
-            box-sizing: border-box;
-            font-size: 1rem;
-            font-family: inherit;
-        }
-        input[type="text"]:focus, textarea:focus {
-            outline: none;
-            border-color: var(--primary);
-            box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.1);
-        }
-        input[type="file"] {
-            background: #f9fafb;
-            padding: 8px;
-            cursor: pointer;
-        }
-        textarea {
-            resize: vertical;
-        }
-        button {
-            background: var(--primary);
-            color: white;
-            padding: 12px 16px;
-            border: none;
-            border-radius: 6px;
-            cursor: pointer;
-            font-weight: 600;
-            width: 100%;
-            font-size: 1rem;
-            transition: background 0.2s;
-        }
-        button:hover {
-            background: var(--primary-hover);
-        }
-        .success {
-            background: #ecfdf5;
-            color: #065f46;
-            padding: 14px;
-            border-radius: 6px;
-            margin-bottom: 20px;
-            border: 1px solid #a7f3d0;
-            font-weight: 500;
-        }
-        .hint {
-            font-size: 0.85rem;
-            color: #6b7280;
-            margin-top: 4px;
-        }
+        body { font-family: sans-serif; max-width: 600px; margin: 40px auto; padding: 20px; }
+        .form-group { margin-bottom: 15px; }
+        label { display: block; margin-bottom: 5px; font-weight: bold; }
+        input[type="text"], textarea { width: 100%; padding: 8px; box-sizing: border-box; }
+        textarea { height: 120px; }
+        button { background: #007bff; color: white; border: none; padding: 10px 15px; cursor: pointer; }
+        button:hover { background: #0056b3; }
+        #status { margin-top: 15px; font-weight: bold; }
     </style>
 </head>
 <body>
-    <form action="/submit" method="POST" enctype="multipart/form-data">
-        <h1>Neues Issue erstellen</h1>
-        
-        {% if success %}
-            <div class="success">✔ Das Issue wurde erfolgreich inklusive Anhänge im Repository angelegt!</div>
-        {% endif %}
 
+    <h2>Support-Anfrage einreichen</h2>
+    
+    <form id="supportForm">
         <div class="form-group">
-            <label for="name">Ihr Name / Organisation:</label>
-            <input type="text" id="name" name="name" placeholder="z. B. Max Mustermann" required>
+            <label for="name">Dein Name (freiwillig):</label>
+            <input type="text" id="name" name="name" placeholder="Max Mustermann">
         </div>
 
         <div class="form-group">
-            <label for="title">Titel des Issues:</label>
-            <input type="text" id="title" name="title" placeholder="Kurze Zusammenfassung des Anliegens..." required>
-        </div>
-        
-        <div class="form-group">
-            <label for="body">Beschreibung:</label>
-            <textarea id="body" name="body" rows="6" placeholder="Beschreiben Sie Ihr Anliegen detailliert..."></textarea>
+            <label for="title">Titel (optional, wird sonst automatisch generiert):</label>
+            <input type="text" id="title" name="title" placeholder="Kurzbeschreibung des Anliegens">
         </div>
 
         <div class="form-group">
-            <label for="attachments">Anhänge (optional, Mehrfachauswahl möglich):</label>
+            <label for="body">Beschreibung (freiwillig):</label>
+            <textarea id="body" name="body" placeholder="Beschreibe dein Problem..."></textarea>
+        </div>
+
+        <div class="form-group">
+            <label for="attachments">Dateien anhängen (optional):</label>
             <input type="file" id="attachments" name="attachments" multiple>
-            <div class="hint">Sie können Bilder, Logs oder Dokumente anhängen.</div>
         </div>
-        
-        <button type="submit">Issue abschicken</button>
+
+        <div class="form-group">
+            <label>
+                <input type="checkbox" id="includeScreenshot" name="includeScreenshot"> 
+                Screenshot von dieser Seite anhängen
+            </label>
+        </div>
+
+        <button type="submit" id="submitBtn">Absenden</button>
     </form>
+
+    <div id="status"></div>
+
+    <!-- html2canvas für die Screenshot-Funktion einbinden -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+
+    <script>
+        const STORAGE_KEY = "support_form_saved_name";
+
+        // 1. Namen beim Laden aus dem localStorage vorausfühlen
+        document.addEventListener("DOMContentLoaded", () => {
+            const savedName = localStorage.getItem(STORAGE_KEY);
+            if (savedName) {
+                document.getElementById("name").value = savedName;
+            }
+        });
+
+        // 2. Formular-Absenden abfangen
+        document.getElementById("supportForm").addEventListener("submit", async function(e) {
+            e.preventDefault();
+            
+            const submitBtn = document.getElementById("submitBtn");
+            const statusDiv = document.getElementById("status");
+            submitBtn.disabled = true;
+            statusDiv.textContent = "Wird gesendet...";
+
+            // Namen im Browser speichern
+            const nameValue = document.getElementById("name").value.trim();
+            if (nameValue) {
+                localStorage.setItem(STORAGE_KEY, nameValue);
+            }
+
+            const formData = new FormData(this);
+
+            // Screenshot erstellen, falls Checkbox aktiviert ist
+            const includeScreenshot = document.getElementById("includeScreenshot").checked;
+            if (includeScreenshot) {
+                try {
+                    statusDiv.textContent = "Erstelle Screenshot...";
+                    const canvas = await html2canvas(document.body, { ignoreElements: (element) => element.id === 'status' });
+                    const base64Screenshot = canvas.toDataURL("image/png");
+                    formData.append("screenshot_base64", base64Screenshot);
+                } catch (err) {
+                    console.error("Fehler beim Erstellen des Screenshots:", err);
+                }
+            }
+
+            statusDiv.textContent = "Übertrage an Forgejo...";
+
+            try {
+                const response = await requestSubmit(formData);
+                if (response.ok) {
+                    statusDiv.style.color = "green";
+                    statusDiv.textContent = "Erfolgreich eingereicht! Vielen Dank.";
+                    document.getElementById("supportForm").reset();
+                    // Namen nach Reset wiederherstellen, falls gewünscht, oder leer lassen. Hier behalten wir ihn im Feld.
+                    if (nameValue) document.getElementById("name").value = nameValue;
+                } else {
+                    const result = await response.json();
+                    statusDiv.style.color = "red";
+                    statusDiv.textContent = "Fehler: " + (result.error || "Unbekannter Fehler");
+                }
+            } catch (error) {
+                statusDiv.style.color = "red";
+                statusDiv.textContent = "Netzwerkfehler beim Senden.";
+                console.error(error);
+            } finally {
+                submitBtn.disabled = false;
+            }
+        });
+
+        async function requestSubmit(formData) {
+            return await fetch("/submit", {
+                method: "POST",
+                body: formData
+            });
+        }
+    </script>
 </body>
 </html>
