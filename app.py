@@ -36,22 +36,63 @@ def submit_issue():
         "Authorization": f"token {FORGEJO_TOKEN}"
     }
 
+    # 1. Schritt: Issue ERST erstellen, um die Issue-Nummer (Index) zu erhalten
+    formatted_body = f"""### Neue Einreichung über das Webformular
+
+**Eingereicht von:** {name if name else "Anonym"}  
+
+---
+
+#### Beschreibung:
+{body_text if body_text else "*Keine Beschreibung angegeben.*"}
+
+---
+*Automatisch generiert über das Supportformular.*
+"""
+
+    issue_api_url = f"{FORGEJO_URL.rstrip('/')}/api/v1/repos/{FORGEJO_REPO}/issues"
+    issue_payload = {
+        "title": title,
+        "body": formatted_body
+    }
+
+    try:
+        issue_res = requests.post(
+            issue_api_url, 
+            json=issue_payload, 
+            headers={**headers, "Content-Type": "application/json"}, 
+            timeout=10
+        )
+        
+        if issue_res.status_code != 201:
+            logger.error(f"Forgejo-Fehler beim Erstellen des Issues ({issue_res.status_code}): {issue_res.text}")
+            return jsonify({
+                "error": "Fehler beim Erstellen des Issues in Forgejo",
+                "details": issue_res.text
+            }, issue_res.status_code)
+
+        issue_data = issue_res.json()
+        issue_number = issue_data.get("number")
+        logger.info(f"Issue #{issue_number} erfolgreich in {FORGEJO_REPO} erstellt.")
+
+    except requests.exceptions.RequestException as e:
+        logger.exception("Verbindungsfehler zur Forgejo-API beim Erstellen des Issues")
+        return jsonify({"error": f"Verbindungsfehler: {str(e)}"}), 500
+
+    # 2. Schritt: Anhänge an das gerade erstellte Issue hochladen
     uploaded_files = request.files.getlist("attachments")
     attachment_markdowns = []
 
-    # 1. Schritt: Anhänge einzeln an den Forgejo-Asset-Endpunkt hochladen
     for file in uploaded_files:
         if file and file.filename:
-            upload_url = f"{FORGEJO_URL.rstrip('/')}/api/v1/repos/{FORGEJO_REPO}/assets"
+            # Korrekter Forgejo-Endpunkt für Issue-spezifische Anhänge
+            upload_url = f"{FORGEJO_URL.rstrip('/')}/api/v1/repos/{FORGEJO_REPO}/issues/{issue_number}/attachments"
             
-            # Korrekter Multipart-Payload für die requests-Bibliothek
             files_payload = {
                 'attachment': (file.filename, file.stream, file.content_type or 'application/octet-stream')
             }
             
             try:
-                # WICHTIG: Kein manuelles Setzen von 'Content-Type' im Header, 
-                # da requests den Multipart-Boundary-Header sonst überschreibt!
                 upload_res = requests.post(upload_url, files=files_payload, headers=headers, timeout=30)
                 
                 if upload_res.status_code == 201:
@@ -65,55 +106,32 @@ def submit_issue():
                         else:
                             attachment_markdowns.append(f"[{file_name}]({file_url})")
                             
-                        logger.info(f"Anhang erfolgreich hochgeladen und verlinkt: {file_name}")
+                        logger.info(f"Anhang erfolgreich zu Issue #{issue_number} hochgeladen: {file_name}")
                 else:
                     logger.error(f"Fehler beim Hochladen des Anhangs {file.filename} ({upload_res.status_code}): {upload_res.text}")
             except requests.exceptions.RequestException as e:
                 logger.exception(f"Netzwerkfehler beim Hochladen des Anhangs {file.filename}")
 
-    # 2. Schritt: Formatierter Beschreibungstext inklusive der hochgeladenen Anhänge
-    attachments_section = ""
+    # 3. Schritt (Optional): Falls Anhänge hochgeladen wurden, das Issue kurz aktualisieren, 
+    # damit die Bilder/Links direkt im Beschreibungstext auftauchen.
     if attachment_markdowns:
         attachments_section = "\n\n---\n#### Anhänge:\n" + "\n".join(attachment_markdowns)
-
-    formatted_body = f"""### Neue Einreichung über das Webformular
-
-**Eingereicht von:** {name if name else "Anonym"}  
-
----
-
-#### Beschreibung:
-{body_text if body_text else "*Keine Beschreibung angegeben.*"}{attachments_section}
-
----
-*Automatisch generiert über das Supportformular.*
-"""
-
-    # 3. Schritt: Issue in Forgejo erstellen
-    issue_api_url = f"{FORGEJO_URL.rstrip('/')}/api/v1/repos/{FORGEJO_REPO}/issues"
-    issue_payload = {
-        "title": title,
-        "body": formatted_body
-    }
-
-    try:
-        response = requests.post(issue_api_url, json=issue_payload, headers={**headers, "Content-Type": "application/json"}, timeout=10)
+        updated_body = formatted_body + attachments_section
         
-        if response.status_code == 201:
-            logger.info(f"Issue erfolgreich in {FORGEJO_REPO} erstellt.")
-            if request.is_json or request.headers.get("X-Requested-With") == "XMLHttpRequest":
-                return jsonify({"success": True, "message": "Issue und Anhänge erfolgreich erstellt!"}), 201
-            return render_template("index.html", success=True)
-        else:
-            logger.error(f"Forgejo-Fehler beim Erstellen des Issues ({response.status_code}): {response.text}")
-            return jsonify({
-                "error": "Fehler beim Erstellen des Issues in Forgejo",
-                "details": response.text
-            }), response.status_code
+        update_url = f"{FORGEJO_URL.rstrip('/')}/api/v1/repos/{FORGEJO_REPO}/issues/{issue_number}"
+        try:
+            requests.patch(
+                update_url, 
+                json={"body": updated_body}, 
+                headers={**headers, "Content-Type": "application/json"}, 
+                timeout=10
+            )
+        except Exception:
+            logger.exception("Konnte Issue-Body mit Anhang-Links nicht aktualisieren.")
 
-    except requests.exceptions.RequestException as e:
-        logger.exception("Verbindungsfehler zur Forgejo-API")
-        return jsonify({"error": f"Verbindungsfehler: {str(e)}"}), 500
+    if request.is_json or request.headers.get("X-Requested-With") == "XMLHttpRequest":
+        return jsonify({"success": True, "message": f"Issue #{issue_number} und Anhänge erfolgreich erstellt!"}), 201
+    return render_template("index.html", success=True)
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=5000)
