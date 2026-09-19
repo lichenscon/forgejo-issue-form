@@ -36,7 +36,7 @@ def submit_issue():
         "Authorization": f"token {FORGEJO_TOKEN}"
     }
 
-    # 1. Schritt: Issue ERST erstellen, um die Issue-Nummer (Index) zu erhalten
+    # 1. Schritt: Issue ERST erstellen, um die Issue-Nummer zu erhalten
     formatted_body = f"""### Neue Einreichung über das Webformular
 
 **Eingereicht von:** {name if name else "Anonym"}  
@@ -79,14 +79,14 @@ def submit_issue():
         logger.exception("Verbindungsfehler zur Forgejo-API beim Erstellen des Issues")
         return jsonify({"error": f"Verbindungsfehler: {str(e)}"}), 500
 
-    # 2. Schritt: Anhänge an das gerade erstellte Issue hochladen
+    # 2. Schritt: Anhänge an das erstellte Issue hochladen (WICHTIG: Endpunkt heißt 'assets')
     uploaded_files = request.files.getlist("attachments")
     attachment_markdowns = []
 
     for file in uploaded_files:
         if file and file.filename:
-            # Korrekter Forgejo-Endpunkt für Issue-spezifische Anhänge
-            upload_url = f"{FORGEJO_URL.rstrip('/')}/api/v1/repos/{FORGEJO_REPO}/issues/{issue_number}/attachments"
+            # Korrekter API-Pfad mit /assets und optionalem Dateinamen als Parameter
+            upload_url = f"{FORGEJO_URL.rstrip('/')}/api/v1/repos/{FORGEJO_REPO}/issues/{issue_number}/assets?name={file.filename}"
             
             files_payload = {
                 'attachment': (file.filename, file.stream, file.content_type or 'application/octet-stream')
@@ -112,8 +112,7 @@ def submit_issue():
             except requests.exceptions.RequestException as e:
                 logger.exception(f"Netzwerkfehler beim Hochladen des Anhangs {file.filename}")
 
-    # 3. Schritt (Optional): Falls Anhänge hochgeladen wurden, das Issue kurz aktualisieren, 
-    # damit die Bilder/Links direkt im Beschreibungstext auftauchen.
+    # 3. Schritt: Falls Anhänge hochgeladen wurden, das Issue mit den Markdown-Links aktualisieren
     if attachment_markdowns:
         attachments_section = "\n\n---\n#### Anhänge:\n" + "\n".join(attachment_markdowns)
         updated_body = formatted_body + attachments_section
